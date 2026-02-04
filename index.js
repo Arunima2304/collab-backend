@@ -13,20 +13,25 @@ const fs = require("fs");
 const app = express();
 const server = http.createServer(app);
 
-// --- 2. MIDDLEWARE (UPDATED WITH NEW LINK) ---
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://collab-frontend-git-main-arunimachakrabortys-projects.vercel.app",
-  "https://collab-frontend-hl7g2lxwk-arunimachakrabortys-projects.vercel.app",
-  "https://collab-frontend-ashy.vercel.app" // <--- Added this one!
-];
-
-app.use(cors({
-  origin: allowedOrigins,
+// --- 2. MIDDLEWARE (THE MASTER FIX) ---
+// This function allows ANY Vercel link and Localhost automatically
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+    
+    // Allow Localhost and ANY Vercel App
+    if (origin.includes("localhost") || origin.includes("vercel.app")) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("Not allowed by CORS"));
+    }
+  },
   methods: ["GET", "POST"],
   credentials: true
-}));
+};
 
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // --- 3. DATABASE ---
@@ -55,17 +60,13 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // Upload Route (FIXED for Mixed Content Error)
 app.post("/api/upload", upload.single("pdf"), (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json("No file uploaded!");
-    }
+    if (!req.file) return res.status(400).json("No file uploaded!");
     
     // SMART PROTOCOL CHECK:
-    // If we are on localhost, use 'http'. If on Render, force 'https'.
+    // If on localhost, use 'http'. If on Render/Vercel, force 'https'.
     const protocol = req.get("host").includes("localhost") ? "http" : "https";
     
-    // Construct the URL using the correct protocol
     const fileUrl = `${protocol}://${req.get("host")}/uploads/${req.file.filename}`;
-    
     res.status(200).json({ url: fileUrl });
   } catch (err) {
     console.error(err);
@@ -73,13 +74,9 @@ app.post("/api/upload", upload.single("pdf"), (req, res) => {
   }
 });
 
-// --- 6. SOCKET.IO SETUP (UPDATED) ---
+// --- 6. SOCKET.IO SETUP (THE MASTER FIX) ---
 const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins, // Uses the list with the new link
-    methods: ["GET", "POST"],
-    credentials: true
-  },
+  cors: corsOptions // Use the same "Allow All Vercel" rule
 });
 
 // --- 🧠 SERVER MEMORY ---
