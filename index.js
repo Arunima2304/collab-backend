@@ -52,10 +52,20 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Upload Route (FIXED for Mixed Content Error)
 app.post("/api/upload", upload.single("pdf"), (req, res) => {
   try {
-    if (!req.file) return res.status(400).json("No file uploaded!");
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    if (!req.file) {
+      return res.status(400).json("No file uploaded!");
+    }
+    
+    // SMART PROTOCOL CHECK:
+    // If we are on localhost, use 'http'. If on Render, force 'https'.
+    const protocol = req.get("host").includes("localhost") ? "http" : "https";
+    
+    // Construct the URL using the correct protocol
+    const fileUrl = `${protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    
     res.status(200).json({ url: fileUrl });
   } catch (err) {
     console.error(err);
