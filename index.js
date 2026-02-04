@@ -13,12 +13,12 @@ const fs = require("fs");
 const app = express();
 const server = http.createServer(app);
 
-// --- 2. MIDDLEWARE (FIXED FOR VERCEL) ---
-// We explicitly allow your Vercel Frontend here
+// --- 2. MIDDLEWARE (UPDATED WITH NEW LINK) ---
 const allowedOrigins = [
   "http://localhost:5173",
   "https://collab-frontend-git-main-arunimachakrabortys-projects.vercel.app",
-  "https://collab-frontend-hl7g2lxwk-arunimachakrabortys-projects.vercel.app"
+  "https://collab-frontend-hl7g2lxwk-arunimachakrabortys-projects.vercel.app",
+  "https://collab-frontend-ashy.vercel.app" // <--- Added this one!
 ];
 
 app.use(cors({
@@ -39,30 +39,22 @@ app.use("/api/auth", authRoute);
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = path.join(__dirname, "uploads");
-    // Create folder if it doesn't exist
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath);
     }
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // Save file as "timestamp-name.pdf" to avoid duplicates
     cb(null, Date.now() + "-" + file.originalname);
   },
 });
 
 const upload = multer({ storage });
-
-// Serve the uploads folder statically
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Upload Route
 app.post("/api/upload", upload.single("pdf"), (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json("No file uploaded!");
-    }
-    // Return the full URL
+    if (!req.file) return res.status(400).json("No file uploaded!");
     const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
     res.status(200).json({ url: fileUrl });
   } catch (err) {
@@ -71,16 +63,16 @@ app.post("/api/upload", upload.single("pdf"), (req, res) => {
   }
 });
 
-// --- 6. SOCKET.IO SETUP (FIXED FOR VERCEL) ---
+// --- 6. SOCKET.IO SETUP (UPDATED) ---
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins, // Use the same allowed origins as above
+    origin: allowedOrigins, // Uses the list with the new link
     methods: ["GET", "POST"],
     credentials: true
   },
 });
 
-// --- 🧠 SERVER MEMORY (Stores PDF & Page for each room) ---
+// --- 🧠 SERVER MEMORY ---
 const roomState = {}; 
 
 io.on("connection", (socket) => {
@@ -88,79 +80,49 @@ io.on("connection", (socket) => {
 
   socket.on("join_room", async (roomId) => {
     socket.join(roomId);
-    console.log(`User ${socket.id} joined room: ${roomId}`);
-
-    // A. Load PDF & Page from Memory (If exists)
     if (roomState[roomId]) {
       socket.emit("receive-pdf", roomState[roomId].pdfUrl);
       socket.emit("receive_page_change", roomState[roomId].page);
     }
-
-    // B. Load Highlights/Notes from MongoDB
     try {
       const room = await Room.findOneAndUpdate(
         { roomId: roomId },
         { $setOnInsert: { highlights: [], notes: [] } },
         { new: true, upsert: true }
       );
-      socket.emit("load_data", { 
-        highlights: room.highlights, 
-        notes: room.notes 
-      });
+      socket.emit("load_data", { highlights: room.highlights, notes: room.notes });
     } catch (err) {
       console.error("Error loading room data:", err);
     }
   });
 
-  // --- PDF UPLOAD SYNC ---
   socket.on("upload-pdf", ({ room, url }) => {
-    // 1. Save to Memory
     if (!roomState[room]) roomState[room] = { page: 1 };
     roomState[room].pdfUrl = url;
     roomState[room].page = 1;
-
-    // 2. Broadcast to room
     socket.to(room).emit("receive-pdf", url);
   });
 
-  // --- PAGE CHANGE SYNC ---
   socket.on("change_page", ({ room, page }) => {
-    // 1. Update Memory
-    if (roomState[room]) {
-        roomState[room].page = page;
-    } else {
-        roomState[room] = { page: page };
-    }
-    // 2. Broadcast to room
+    if (roomState[room]) roomState[room].page = page;
+    else roomState[room] = { page: page };
     socket.to(room).emit("receive_page_change", page);
   });
 
-  // --- HIGHLIGHTS ---
   socket.on("send_highlight", async (data) => {
     socket.to(data.roomId).emit("receive_highlight", data);
-    try {
-      await Room.updateOne({ roomId: data.roomId }, { $push: { highlights: data } });
-    } catch (err) {
-      console.error(err);
-    }
+    try { await Room.updateOne({ roomId: data.roomId }, { $push: { highlights: data } }); } catch (err) { console.error(err); }
   });
 
-  // --- NOTES ---
   socket.on("send_note", async (data) => {
     socket.to(data.roomId).emit("receive_note", data);
-    try {
-      await Room.updateOne({ roomId: data.roomId }, { $push: { notes: data } });
-    } catch (err) {
-      console.error(err);
-    }
+    try { await Room.updateOne({ roomId: data.roomId }, { $push: { notes: data } }); } catch (err) { console.error(err); }
   });
 
-  // --- CHAT ---
   socket.on("send_message", (data) => {
     socket.to(data.room).emit("receive_message", data);
   });
 
-  // --- CURSORS ---
   socket.on("cursor_move", (data) => {
     socket.to(data.roomId).emit("receive_cursor", data);
   });
@@ -170,7 +132,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// --- 7. START SERVER ---
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SERVER RUNNING ON PORT ${PORT}`);
