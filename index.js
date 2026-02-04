@@ -3,7 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const connectDB = require("./db");
-const Room = require("./models/Room"); // Ensure you have this model
+const Room = require("./models/Room");
 const authRoute = require("./routes/auth");
 const multer = require("multer");
 const path = require("path");
@@ -13,8 +13,20 @@ const fs = require("fs");
 const app = express();
 const server = http.createServer(app);
 
-// --- 2. MIDDLEWARE ---
-app.use(cors());
+// --- 2. MIDDLEWARE (FIXED FOR VERCEL) ---
+// We explicitly allow your Vercel Frontend here
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://collab-frontend-git-main-arunimachakrabortys-projects.vercel.app",
+  "https://collab-frontend-hl7g2lxwk-arunimachakrabortys-projects.vercel.app"
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ["GET", "POST"],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // --- 3. DATABASE ---
@@ -59,11 +71,12 @@ app.post("/api/upload", upload.single("pdf"), (req, res) => {
   }
 });
 
-// --- 6. SOCKET.IO SETUP ---
+// --- 6. SOCKET.IO SETUP (FIXED FOR VERCEL) ---
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: allowedOrigins, // Use the same allowed origins as above
     methods: ["GET", "POST"],
+    credentials: true
   },
 });
 
